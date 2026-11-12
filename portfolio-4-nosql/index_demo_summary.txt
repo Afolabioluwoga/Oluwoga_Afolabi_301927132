@@ -1,0 +1,14 @@
+  (no old idx_post_date to drop)
+daily_metrics documents: 30000
+
+===== BEFORE index (expected COLLSCAN) =====
+  Stage      : COLLSCAN
+  Docs       : 30000 examined, 10 returned, 0 keys
+  Time ms    : 10
+
+  Created index idx_post_date on { post_id: 1, date: 1 }
+
+===== AFTER index (expected IXSCAN) =====
+  Stage      : IXSCAN (idx_post_date)
+  Docs       : 10 examined, 10 returned, 10 keys
+  Time ms    : 1

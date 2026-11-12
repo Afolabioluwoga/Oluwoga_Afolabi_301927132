@@ -1,0 +1,239 @@
+==> [1/4] Create collections with schema validation
+==> Collections created: social_posts, daily_metrics, comments, conversions
+[
+  'social_posts',
+  'conversions',
+  'comments',
+  'daily_metrics'
+]
+==> [2/4] Generate ~42,000 documents
+==> Collections created: social_posts, daily_metrics, comments, conversions
+[
+  'social_posts',
+  'daily_metrics',
+  'comments',
+  'conversions'
+]
+Inserted 3000 social_posts
+Inserted 30000 daily_metrics
+  ...comments so far: 4000
+Inserted 7461 comments
+Inserted 3000 conversions
+=== Final counts ===
+social_posts : 3000
+daily_metrics: 30000
+comments     : 7461
+conversions  : 3000
+TOTAL        : 43461
+==> Validation tests: 2 bad documents must be REJECTED
+PASS - post with platform "facebook" rejected: Document failed validation
+PASS - post missing caption rejected: Document failed validation
+==> [3/4] Four aggregation pipelines
+
+===== AGG 1: engagement per platform (last 30 days) =====
+{
+  _id: 'tiktok',
+  total_views: 50967091,
+  total_likes: 6351837,
+  total_comments: 759782,
+  total_shares: 1776807,
+  total_saves: 1015008,
+  snapshot_count: 10000,
+  engagement_rate: 17.44
+}
+{
+  _id: 'instagram',
+  total_views: 50893340,
+  total_likes: 6329328,
+  total_comments: 758888,
+  total_shares: 1774773,
+  total_saves: 1009536,
+  snapshot_count: 10000,
+  engagement_rate: 17.41
+}
+{
+  _id: 'youtube',
+  total_views: 50670524,
+  total_likes: 6313478,
+  total_comments: 750824,
+  total_shares: 1768098,
+  total_saves: 1010868,
+  snapshot_count: 10000,
+  engagement_rate: 17.43
+}
+
+===== AGG 2: best-performing post TYPES per platform =====
+{
+  _id: {
+    platform: 'instagram',
+    post_type: 'carousel'
+  },
+  total_views: 17077829,
+  total_likes: 2120180,
+  post_count: 3340
+}
+{
+  _id: {
+    platform: 'instagram',
+    post_type: 'story'
+  },
+  total_views: 17009191,
+  total_likes: 2116672,
+  post_count: 3330
+}
+{
+  _id: {
+    platform: 'instagram',
+    post_type: 'reel'
+  },
+  total_views: 16806320,
+  total_likes: 2092476,
+  post_count: 3330
+}
+{
+  _id: {
+    platform: 'tiktok',
+    post_type: 'video'
+  },
+  total_views: 17120012,
+  total_likes: 2147775,
+  post_count: 3330
+}
+{
+  _id: {
+    platform: 'tiktok',
+    post_type: 'duet'
+  },
+  total_views: 17064713,
+  total_likes: 2127371,
+  post_count: 3340
+}
+{
+  _id: {
+    platform: 'tiktok',
+    post_type: 'stitch'
+  },
+  total_views: 16782366,
+  total_likes: 2076691,
+  post_count: 3330
+}
+{
+  _id: {
+    platform: 'youtube',
+    post_type: 'video'
+  },
+  total_views: 50670524,
+  total_likes: 6313478,
+  post_count: 10000
+}
+
+===== AGG 3: posts linked to conversions (revenue per post) =====
+{
+  conversions: 1,
+  platform: 'instagram',
+  external_id: 'instagram-745',
+  caption: 'Carousel: how to castle safely',
+  revenue_usd: 244.7
+}
+{
+  conversions: 1,
+  platform: 'instagram',
+  external_id: 'instagram-952',
+  caption: 'Carousel: how to castle safely',
+  revenue_usd: 244.64
+}
+{
+  conversions: 1,
+  platform: 'tiktok',
+  external_id: 'tiktok-574',
+  caption: 'Sound on — endgame magic',
+  revenue_usd: 244.63
+}
+{
+  conversions: 1,
+  platform: 'youtube',
+  external_id: 'youtube-446',
+  caption: "Chapter-by-chapter: King's Indian",
+  revenue_usd: 244.63
+}
+{
+  conversions: 1,
+  platform: 'youtube',
+  external_id: 'youtube-614',
+  caption: 'Game review: GM level',
+  revenue_usd: 244.56
+}
+{
+  conversions: 1,
+  platform: 'youtube',
+  external_id: 'youtube-270',
+  caption: 'Full lesson: Sicilian Najdorf',
+  revenue_usd: 244.54
+}
+{
+  conversions: 1,
+  platform: 'youtube',
+  external_id: 'youtube-334',
+  caption: "Opening breakdown: Queen's Gambit",
+  revenue_usd: 244.54
+}
+{
+  conversions: 1,
+  platform: 'tiktok',
+  external_id: 'tiktok-82',
+  caption: 'Duet this opening line!',
+  revenue_usd: 244.45
+}
+{
+  conversions: 1,
+  platform: 'tiktok',
+  external_id: 'tiktok-834',
+  caption: 'TikTok: fastest checkmate',
+  revenue_usd: 244.38
+}
+{
+  conversions: 1,
+  platform: 'instagram',
+  external_id: 'instagram-184',
+  caption: 'Carousel: endgame basics',
+  revenue_usd: 244.36
+}
+
+===== AGG 4 (bonus): top sound on TikTok by duets created =====
+{
+  _id: 'Tactical Beat',
+  total_duets: 75991,
+  total_views: 12806434
+}
+{
+  _id: 'Lo-fi Opening',
+  total_duets: 74544,
+  total_views: 12619028
+}
+{
+  _id: 'Chess Vibes - Original',
+  total_duets: 74258,
+  total_views: 12878007
+}
+{
+  _id: 'Checkmate Drop',
+  total_duets: 73143,
+  total_views: 12663622
+}
+==> [4/4] COLLSCAN -> IXSCAN demo
+  (no old idx_post_date to drop)
+daily_metrics documents: 30000
+
+===== BEFORE index (expected COLLSCAN) =====
+  Stage      : COLLSCAN
+  Docs       : 30000 examined, 10 returned, 0 keys
+  Time ms    : 10
+
+  Created index idx_post_date on { post_id: 1, date: 1 }
+
+===== AFTER index (expected IXSCAN) =====
+  Stage      : IXSCAN (idx_post_date)
+  Docs       : 10 examined, 10 returned, 10 keys
+  Time ms    : 1
+
+==> P4 done.
