@@ -1,0 +1,164 @@
+==> [1/3] Partition the payments table by paid_at month
+BEGIN
+ALTER TABLE
+CREATE TABLE
+DO
+CREATE TABLE
+INSERT 0 28334
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+COMMIT
+
+===== payments partition tree =====
+    partition     | isleaf |                             partition_bound                              
+------------------+--------+--------------------------------------------------------------------------
+ payments_default | t      | DEFAULT
+ payments_202701  | t      | FOR VALUES FROM ('2027-01-01 00:00:00+01') TO ('2027-02-01 00:00:00+01')
+ payments_202612  | t      | FOR VALUES FROM ('2026-12-01 00:00:00+01') TO ('2027-01-01 00:00:00+01')
+ payments_202611  | t      | FOR VALUES FROM ('2026-11-01 00:00:00+01') TO ('2026-12-01 00:00:00+01')
+ payments_202610  | t      | FOR VALUES FROM ('2026-10-01 00:00:00+01') TO ('2026-11-01 00:00:00+01')
+ payments_202609  | t      | FOR VALUES FROM ('2026-09-01 00:00:00+01') TO ('2026-10-01 00:00:00+01')
+ payments_202608  | t      | FOR VALUES FROM ('2026-08-01 00:00:00+01') TO ('2026-09-01 00:00:00+01')
+ payments_202607  | t      | FOR VALUES FROM ('2026-07-01 00:00:00+01') TO ('2026-08-01 00:00:00+01')
+(8 rows)
+
+
+===== EXPLAIN — partition pruning on payments (last 3 months) =====
+                                                                                                          QUERY PLAN                                                                                                           
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         Subplans Removed: 25
+         ->  Bitmap Heap Scan on payments_202608 payments_1
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202608_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+         ->  Bitmap Heap Scan on payments_202609 payments_2
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202609_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+         ->  Bitmap Heap Scan on payments_202610 payments_3
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202610_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+(15 rows)
+
+ANALYZE
+
+===== Row count per monthly partition (newest 6) + DEFAULT partition =====
+    partition    | rows 
+-----------------+------
+ payments_202611 | 2252
+ payments_202610 | 2206
+ payments_202609 | 2107
+ payments_202608 | 2018
+ payments_202607 | 1934
+ payments_202606 | 1806
+(6 rows)
+
+          check_name          | rows 
+------------------------------+------
+ payments_default (must be 0) |    0
+(1 row)
+
+            check_name            | rows  
+----------------------------------+-------
+ total in partitioned table       | 28334
+ total in old unpartitioned table | 28334
+(2 rows)
+
+
+===== One-month query on the PARTITIONED table =====
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual time=0.771..0.773 rows=3 loops=1)
+   Group Key: payments.currency_code
+   Batches: 1  Memory Usage: 24kB
+   ->  Append (actual time=0.034..0.448 rows=2018 loops=1)
+         Subplans Removed: 27
+         ->  Index Scan using payments_202608_paid_at_idx on payments_202608 payments_1 (actual time=0.033..0.356 rows=2018 loops=1)
+               Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '2 mons'::interval)))
+ Planning Time: 1.555 ms
+ Execution Time: 0.800 ms
+(9 rows)
+
+
+===== Same query on the UNPARTITIONED table =====
+ANALYZE
+                                                                                                                   QUERY PLAN                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate (actual time=0.986..0.988 rows=3 loops=1)
+   Group Key: currency_code
+   Batches: 1  Memory Usage: 24kB
+   ->  Bitmap Heap Scan on payments_unpartitioned (actual time=0.086..0.585 rows=2018 loops=1)
+         Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '2 mons'::interval)))
+         Heap Blocks: exact=251
+         ->  Bitmap Index Scan on idx_payments_paidat (actual time=0.059..0.060 rows=2018 loops=1)
+               Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '2 mons'::interval)))
+ Planning Time: 0.158 ms
+ Execution Time: 1.014 ms
+(10 rows)
+
+
+==> Done. The payments table is now RANGE-partitioned by paid_at.
+==> [2/3] Streaming read-replica on port 5433
+==> [1/7] Replication role on the primary
+DO
+==> [2/7] Allow replication connections (lines go at the TOP of pg_hba.conf)
+==> [3/7] Stop any old replica and remove its slot and data
+==> [4/7] pg_basebackup of the primary into the replica directory
+==> [5/7] Config files for the replica (Ubuntu keeps them in /etc, so pg_basebackup copies none)
+==> [6/7] Start the replica on port 5433
+waiting for server to start.... done
+server started
+==> [7/7] Check: replica is in recovery and the primary sees it streaming
+replica pg_is_in_recovery = true
+ application_name |   state   | sync_state 
+------------------+-----------+------------
+ walreceiver      | streaming | async
+(1 row)
+
+==> [3/3] Replica demo (saved to replication_output.log)
+================ Replica demo: primary (5432) + streaming replica (5433) ================
+
+### 1. Who is who
+PRIMARY port 5432  in_recovery=false
+REPLICA port 5433  in_recovery=true
+
+### 2. Write on the REPLICA must be rejected
+ERROR:  cannot execute INSERT in a read-only transaction
+-> rejected as expected (replica is read-only)
+
+### 3. Insert on the PRIMARY
+ student_id |          email           
+------------+--------------------------
+       1514 | demo.replica@example.com
+(1 row)
+
+INSERT 0 1
+
+### 4. Read the same row on the REPLICA
+ student_id | first_name  | last_name |          email           
+------------+-------------+-----------+--------------------------
+       1514 | DemoReplica | Streaming | demo.replica@example.com
+(1 row)
+
+
+### 5. Replication state, seen from the PRIMARY
+ application_name |   state   | sync_state | sent_lsn  | replay_lsn | lag_bytes 
+------------------+-----------+------------+-----------+------------+-----------
+ walreceiver      | streaming | async      | 0/8004218 | 0/8004218  |         0
+(1 row)
+
+
+### 6. Replay position, seen from the REPLICA
+ replayed_up_to | in_recovery 
+----------------+-------------
+ 0/8004218      | t
+(1 row)
+
+
+================ End of replica demo ================
+
+==> P5 done. See cloud_architecture.md for the multi-country design.

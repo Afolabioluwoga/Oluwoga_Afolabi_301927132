@@ -1,0 +1,40 @@
+================ Replica demo: primary (5432) + streaming replica (5433) ================
+
+### 1. Who is who
+PRIMARY port 5432  in_recovery=false
+REPLICA port 5433  in_recovery=true
+
+### 2. Write on the REPLICA must be rejected
+ERROR:  cannot execute INSERT in a read-only transaction
+-> rejected as expected (replica is read-only)
+
+### 3. Insert on the PRIMARY
+ student_id |          email           
+------------+--------------------------
+       1514 | demo.replica@example.com
+(1 row)
+
+INSERT 0 1
+
+### 4. Read the same row on the REPLICA
+ student_id | first_name  | last_name |          email           
+------------+-------------+-----------+--------------------------
+       1514 | DemoReplica | Streaming | demo.replica@example.com
+(1 row)
+
+
+### 5. Replication state, seen from the PRIMARY
+ application_name |   state   | sync_state | sent_lsn  | replay_lsn | lag_bytes 
+------------------+-----------+------------+-----------+------------+-----------
+ walreceiver      | streaming | async      | 0/8004218 | 0/8004218  |         0
+(1 row)
+
+
+### 6. Replay position, seen from the REPLICA
+ replayed_up_to | in_recovery 
+----------------+-------------
+ 0/8004218      | t
+(1 row)
+
+
+================ End of replica demo ================
