@@ -1,0 +1,177 @@
+Pager usage is off.
+--- Q1: revenue per currency, last 30 days (selective on paid_at)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Sort (actual time=6.081..6.084 rows=3 loops=1)
+   Sort Key: (round(sum((p.amount * c.usd_rate)), 2)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  HashAggregate (actual time=6.052..6.059 rows=3 loops=1)
+         Group Key: p.currency_code
+         Batches: 1  Memory Usage: 24kB
+         ->  Hash Join (actual time=0.027..5.160 rows=2907 loops=1)
+               Hash Cond: (p.currency_code = c.currency_code)
+               ->  Seq Scan on payments p (actual time=0.008..4.658 rows=2907 loops=1)
+                     Filter: (paid_at >= (CURRENT_DATE - '30 days'::interval))
+                     Rows Removed by Filter: 25427
+               ->  Hash (actual time=0.007..0.008 rows=3 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     ->  Seq Scan on currencies c (actual time=0.002..0.002 rows=3 loops=1)
+ Planning Time: 0.625 ms
+ Execution Time: 6.156 ms
+(16 rows)
+
+--- Q2: attendance per course, full history (full aggregate, kept on purpose)
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=92.821..92.826 rows=10 loops=1)
+   Sort Key: (round(((100.0 * (sum(CASE WHEN (a.status = 'present'::text) THEN 1 ELSE 0 END))::numeric) / (NULLIF(count(a.attendance_id), 0))::numeric), 2)) DESC NULLS LAST
+   Sort Method: quicksort  Memory: 25kB
+   ->  GroupAggregate (actual time=74.090..92.798 rows=10 loops=1)
+         Group Key: co.course_id
+         ->  Sort (actual time=72.708..82.033 rows=65547 loops=1)
+               Sort Key: co.course_id, s.session_id
+               Sort Method: external merge  Disk: 3648kB
+               ->  Hash Join (actual time=2.213..26.853 rows=65547 loops=1)
+                     Hash Cond: (s.course_id = co.course_id)
+                     ->  Hash Right Join (actual time=2.192..18.887 rows=65547 loops=1)
+                           Hash Cond: (a.session_id = s.session_id)
+                           ->  Seq Scan on attendance a (actual time=0.004..5.005 rows=65293 loops=1)
+                           ->  Hash (actual time=2.115..2.116 rows=11256 loops=1)
+                                 Buckets: 16384  Batches: 1  Memory Usage: 568kB
+                                 ->  Seq Scan on sessions s (actual time=0.002..0.942 rows=11256 loops=1)
+                     ->  Hash (actual time=0.015..0.015 rows=10 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           ->  Seq Scan on courses co (actual time=0.005..0.006 rows=10 loops=1)
+ Planning Time: 0.473 ms
+ Execution Time: 94.234 ms
+(21 rows)
+
+--- Q3: distinct students taught by coach 3, last 90 days (selective)
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate (actual time=16.391..16.394 rows=1 loops=1)
+   ->  Sort (actual time=15.729..15.818 rows=1403 loops=1)
+         Sort Key: s.session_id
+         Sort Method: quicksort  Memory: 103kB
+         ->  Hash Join (actual time=2.911..15.440 rows=1403 loops=1)
+               Hash Cond: (a.session_id = s.session_id)
+               ->  Seq Scan on attendance a (actual time=0.005..6.889 rows=65293 loops=1)
+               ->  Hash (actual time=1.632..1.633 rows=239 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 17kB
+                     ->  Seq Scan on sessions s (actual time=0.089..1.598 rows=239 loops=1)
+                           Filter: ((coach_id = 3) AND (starts_at < now()) AND (starts_at >= (CURRENT_DATE - '90 days'::interval)))
+                           Rows Removed by Filter: 11017
+ Planning Time: 0.324 ms
+ Execution Time: 16.429 ms
+(14 rows)
+
+--- Q4: 20 oldest overdue NGN invoices (selective)
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Limit (actual time=8.604..8.609 rows=20 loops=1)
+   ->  Sort (actual time=8.602..8.605 rows=20 loops=1)
+         Sort Key: i.due_date
+         Sort Method: top-N heapsort  Memory: 27kB
+         ->  Hash Join (actual time=5.718..7.919 rows=2212 loops=1)
+               Hash Cond: (i.student_id = st.student_id)
+               ->  Seq Scan on invoices i (actual time=5.037..6.130 rows=2212 loops=1)
+                     Filter: ((status = 'overdue'::text) AND (currency_code = 'NGN'::bpchar))
+                     Rows Removed by Filter: 32815
+               ->  Hash (actual time=0.665..0.666 rows=1512 loops=1)
+                     Buckets: 2048  Batches: 1  Memory Usage: 91kB
+                     ->  Seq Scan on students st (actual time=0.008..0.306 rows=1512 loops=1)
+ Planning Time: 0.789 ms
+ Execution Time: 8.637 ms
+(14 rows)
+
+--- Q5: marketing funnel - leads to converted students to payments (full aggregate, small tables)
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=11.364..11.370 rows=3 loops=1)
+   Sort Key: (round(sum((p.amount * cur.usd_rate)), 2)) DESC NULLS LAST
+   Sort Method: quicksort  Memory: 25kB
+   ->  HashAggregate (actual time=11.352..11.359 rows=3 loops=1)
+         Group Key: sp.platform
+         Batches: 1  Memory Usage: 24kB
+         ->  Hash Left Join (actual time=3.302..10.584 rows=1482 loops=1)
+               Hash Cond: (p.currency_code = cur.currency_code)
+               ->  Hash Right Join (actual time=3.289..10.177 rows=1482 loops=1)
+                     Hash Cond: (p.invoice_id = i.invoice_id)
+                     ->  Seq Scan on payments p (actual time=0.008..3.033 rows=28334 loops=1)
+                     ->  Hash (actual time=3.273..3.276 rows=1482 loops=1)
+                           Buckets: 2048  Batches: 1  Memory Usage: 93kB
+                           ->  Nested Loop Left Join (actual time=0.062..2.884 rows=1482 loops=1)
+                                 ->  Hash Join (actual time=0.050..0.125 rows=134 loops=1)
+                                       Hash Cond: (l.post_id = sp.post_id)
+                                       ->  Seq Scan on leads l (actual time=0.010..0.027 rows=134 loops=1)
+                                       ->  Hash (actual time=0.035..0.036 rows=78 loops=1)
+                                             Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                             ->  Seq Scan on social_posts sp (actual time=0.006..0.018 rows=78 loops=1)
+                                 ->  Memoize (actual time=0.003..0.010 rows=11 loops=134)
+                                       Cache Key: l.converted_student_id
+                                       Cache Mode: logical
+                                       Hits: 84  Misses: 50  Evictions: 0  Overflows: 0  Memory Usage: 50kB
+                                       ->  Index Scan using uk_invoice on invoices i (actual time=0.007..0.019 rows=24 loops=50)
+                                             Index Cond: (student_id = l.converted_student_id)
+               ->  Hash (actual time=0.007..0.007 rows=3 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     ->  Seq Scan on currencies cur (actual time=0.004..0.004 rows=3 loops=1)
+ Planning Time: 0.981 ms
+ Execution Time: 11.438 ms
+(31 rows)
+
+--- Q6: online vs in-person sessions, last 14 days (selective on starts_at)
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=17.067..17.070 rows=2 loops=1)
+   Sort Key: (count(DISTINCT s.session_id)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  GroupAggregate (actual time=16.916..17.054 rows=2 loops=1)
+         Group Key: s.mode
+         ->  Sort (actual time=16.856..16.907 rows=1427 loops=1)
+               Sort Key: s.mode, s.session_id
+               Sort Method: quicksort  Memory: 108kB
+               ->  Hash Right Join (actual time=3.588..16.221 rows=1427 loops=1)
+                     Hash Cond: (a.session_id = s.session_id)
+                     ->  Seq Scan on attendance a (actual time=0.011..6.060 rows=65293 loops=1)
+                     ->  Hash (actual time=3.569..3.571 rows=236 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 19kB
+                           ->  Seq Scan on sessions s (actual time=0.011..3.508 rows=236 loops=1)
+                                 Filter: ((starts_at < now()) AND (starts_at >= (CURRENT_DATE - '14 days'::interval)))
+                                 Rows Removed by Filter: 11020
+ Planning Time: 0.326 ms
+ Execution Time: 17.105 ms
+(18 rows)
+
+--- Q7: top-grossing courses, last 90 days (selective on paid_at)
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Limit (actual time=31.872..31.879 rows=10 loops=1)
+   ->  Sort (actual time=31.871..31.876 rows=10 loops=1)
+         Sort Key: (round(sum((p.amount * cur.usd_rate)), 2)) DESC
+         Sort Method: quicksort  Memory: 26kB
+         ->  HashAggregate (actual time=31.838..31.861 rows=10 loops=1)
+               Group Key: co.course_id
+               Batches: 1  Memory Usage: 24kB
+               ->  Hash Join (actual time=6.122..28.703 rows=6992 loops=1)
+                     Hash Cond: (p.currency_code = cur.currency_code)
+                     ->  Hash Join (actual time=6.111..26.881 rows=6992 loops=1)
+                           Hash Cond: (i.course_id = co.course_id)
+                           ->  Hash Join (actual time=6.103..25.407 rows=6992 loops=1)
+                                 Hash Cond: (i.invoice_id = p.invoice_id)
+                                 ->  Seq Scan on invoices i (actual time=0.002..9.724 rows=35027 loops=1)
+                                 ->  Hash (actual time=6.089..6.090 rows=6992 loops=1)
+                                       Buckets: 8192  Batches: 1  Memory Usage: 420kB
+                                       ->  Seq Scan on payments p (actual time=0.005..5.203 rows=6992 loops=1)
+                                             Filter: (paid_at >= (CURRENT_DATE - '90 days'::interval))
+                                             Rows Removed by Filter: 21342
+                           ->  Hash (actual time=0.004..0.005 rows=10 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                 ->  Seq Scan on courses co (actual time=0.002..0.003 rows=10 loops=1)
+                     ->  Hash (actual time=0.007..0.007 rows=3 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           ->  Seq Scan on currencies cur (actual time=0.004..0.004 rows=3 loops=1)
+ Planning Time: 0.335 ms
+ Execution Time: 31.929 ms
+(27 rows)
+

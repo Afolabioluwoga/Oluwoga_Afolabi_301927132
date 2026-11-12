@@ -1,0 +1,22 @@
+P2 summary - EXPLAIN ANALYZE execution time (ms) and how each table was read
+
+Query  Before ms   After ms  Speed-up  Tables read AFTER (table:scan type)
+Q1          6.16       2.51      2.4x  payments:Bitmap currencies:Seq
+Q2         94.23      96.65      1.0x  attendance:Seq sessions:Seq courses:Seq
+Q3         16.43       1.43     11.5x  sessions:Bitmap attendance:Idx
+Q4          8.64       0.13     64.9x  invoices:Idx students:Idx
+Q5         11.44       3.62      3.2x  leads:Seq social_posts:Seq invoices:Idx payments:Idx currencies:Seq
+Q6         17.11       1.54     11.1x  sessions:Bitmap attendance:Idx
+Q7         31.93      11.22      2.8x  invoices:Seq payments:Bitmap courses:Seq currencies:Seq
+
+Before-plan scans:
+  Q1: payments:Seq currencies:Seq
+  Q2: attendance:Seq sessions:Seq courses:Seq
+  Q3: attendance:Seq sessions:Seq
+  Q4: invoices:Seq students:Seq
+  Q5: payments:Seq leads:Seq social_posts:Seq invoices:Idx currencies:Seq
+  Q6: attendance:Seq sessions:Seq
+  Q7: invoices:Seq payments:Seq courses:Seq currencies:Seq
+
+Note: Q2 and Q5 are full-history aggregates kept on purpose; a Seq Scan is the correct plan there.
+Small differences where the plan did not change are run-to-run noise.

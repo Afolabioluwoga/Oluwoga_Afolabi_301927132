@@ -1,0 +1,177 @@
+Pager usage is off.
+--- Q1: revenue per currency, last 30 days (selective on paid_at)
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Sort (actual time=2.382..2.385 rows=3 loops=1)
+   Sort Key: (round(sum((p.amount * c.usd_rate)), 2)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  HashAggregate (actual time=2.349..2.357 rows=3 loops=1)
+         Group Key: p.currency_code
+         Batches: 1  Memory Usage: 24kB
+         ->  Hash Join (actual time=0.195..1.480 rows=2907 loops=1)
+               Hash Cond: (p.currency_code = c.currency_code)
+               ->  Bitmap Heap Scan on payments p (actual time=0.171..0.955 rows=2907 loops=1)
+                     Recheck Cond: (paid_at >= (CURRENT_DATE - '30 days'::interval))
+                     Heap Blocks: exact=251
+                     ->  Bitmap Index Scan on idx_payments_paidat (actual time=0.139..0.140 rows=2907 loops=1)
+                           Index Cond: (paid_at >= (CURRENT_DATE - '30 days'::interval))
+               ->  Hash (actual time=0.011..0.012 rows=3 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     ->  Seq Scan on currencies c (actual time=0.004..0.004 rows=3 loops=1)
+ Planning Time: 0.721 ms
+ Execution Time: 2.513 ms
+(18 rows)
+
+--- Q2: attendance per course, full history (full aggregate, kept on purpose)
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=95.531..95.536 rows=10 loops=1)
+   Sort Key: (round(((100.0 * (sum(CASE WHEN (a.status = 'present'::text) THEN 1 ELSE 0 END))::numeric) / (NULLIF(count(a.attendance_id), 0))::numeric), 2)) DESC NULLS LAST
+   Sort Method: quicksort  Memory: 25kB
+   ->  GroupAggregate (actual time=82.139..95.516 rows=10 loops=1)
+         Group Key: co.course_id
+         ->  Sort (actual time=79.324..86.518 rows=65547 loops=1)
+               Sort Key: co.course_id, s.session_id
+               Sort Method: external merge  Disk: 3648kB
+               ->  Hash Join (actual time=2.224..26.184 rows=65547 loops=1)
+                     Hash Cond: (s.course_id = co.course_id)
+                     ->  Hash Right Join (actual time=2.176..18.195 rows=65547 loops=1)
+                           Hash Cond: (a.session_id = s.session_id)
+                           ->  Seq Scan on attendance a (actual time=0.004..4.743 rows=65293 loops=1)
+                           ->  Hash (actual time=2.105..2.106 rows=11256 loops=1)
+                                 Buckets: 16384  Batches: 1  Memory Usage: 568kB
+                                 ->  Seq Scan on sessions s (actual time=0.003..0.939 rows=11256 loops=1)
+                     ->  Hash (actual time=0.018..0.018 rows=10 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           ->  Seq Scan on courses co (actual time=0.005..0.007 rows=10 loops=1)
+ Planning Time: 0.634 ms
+ Execution Time: 96.651 ms
+(21 rows)
+
+--- Q3: distinct students taught by coach 3, last 90 days (selective)
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate (actual time=1.380..1.381 rows=1 loops=1)
+   ->  Sort (actual time=1.057..1.111 rows=1403 loops=1)
+         Sort Key: s.session_id
+         Sort Method: quicksort  Memory: 103kB
+         ->  Nested Loop (actual time=0.088..0.902 rows=1403 loops=1)
+               ->  Bitmap Heap Scan on sessions s (actual time=0.071..0.123 rows=239 loops=1)
+                     Recheck Cond: ((coach_id = 3) AND (starts_at >= (CURRENT_DATE - '90 days'::interval)) AND (starts_at < now()))
+                     Heap Blocks: exact=21
+                     ->  Bitmap Index Scan on idx_sessions_coach_startsat (actual time=0.062..0.063 rows=239 loops=1)
+                           Index Cond: ((coach_id = 3) AND (starts_at >= (CURRENT_DATE - '90 days'::interval)) AND (starts_at < now()))
+               ->  Index Scan using idx_attendance_session on attendance a (actual time=0.002..0.002 rows=6 loops=239)
+                     Index Cond: (session_id = s.session_id)
+ Planning Time: 0.421 ms
+ Execution Time: 1.429 ms
+(14 rows)
+
+--- Q4: 20 oldest overdue NGN invoices (selective)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.038..0.110 rows=20 loops=1)
+   ->  Nested Loop (actual time=0.038..0.108 rows=20 loops=1)
+         ->  Index Scan using idx_invoices_status_cur_due on invoices i (actual time=0.027..0.047 rows=20 loops=1)
+               Index Cond: ((status = 'overdue'::text) AND (currency_code = 'NGN'::bpchar))
+         ->  Memoize (actual time=0.002..0.002 rows=1 loops=20)
+               Cache Key: i.student_id
+               Cache Mode: logical
+               Hits: 1  Misses: 19  Evictions: 0  Overflows: 0  Memory Usage: 3kB
+               ->  Index Scan using students_pkey on students st (actual time=0.002..0.002 rows=1 loops=19)
+                     Index Cond: (student_id = i.student_id)
+ Planning Time: 0.599 ms
+ Execution Time: 0.133 ms
+(12 rows)
+
+--- Q5: marketing funnel - leads to converted students to payments (full aggregate, small tables)
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=3.576..3.579 rows=3 loops=1)
+   Sort Key: (round(sum((p.amount * cur.usd_rate)), 2)) DESC NULLS LAST
+   Sort Method: quicksort  Memory: 25kB
+   ->  HashAggregate (actual time=3.568..3.572 rows=3 loops=1)
+         Group Key: sp.platform
+         Batches: 1  Memory Usage: 24kB
+         ->  Hash Left Join (actual time=0.056..3.111 rows=1482 loops=1)
+               Hash Cond: (p.currency_code = cur.currency_code)
+               ->  Nested Loop Left Join (actual time=0.049..2.866 rows=1482 loops=1)
+                     ->  Nested Loop Left Join (actual time=0.041..1.066 rows=1482 loops=1)
+                           ->  Hash Join (actual time=0.029..0.070 rows=134 loops=1)
+                                 Hash Cond: (l.post_id = sp.post_id)
+                                 ->  Seq Scan on leads l (actual time=0.005..0.015 rows=134 loops=1)
+                                 ->  Hash (actual time=0.021..0.021 rows=78 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                       ->  Seq Scan on social_posts sp (actual time=0.003..0.009 rows=78 loops=1)
+                           ->  Memoize (actual time=0.002..0.006 rows=11 loops=134)
+                                 Cache Key: l.converted_student_id
+                                 Cache Mode: logical
+                                 Hits: 84  Misses: 50  Evictions: 0  Overflows: 0  Memory Usage: 50kB
+                                 ->  Index Scan using uk_invoice on invoices i (actual time=0.005..0.012 rows=24 loops=50)
+                                       Index Cond: (student_id = l.converted_student_id)
+                     ->  Index Scan using idx_payments_invoice on payments p (actual time=0.001..0.001 rows=1 loops=1482)
+                           Index Cond: (invoice_id = i.invoice_id)
+               ->  Hash (actual time=0.003..0.004 rows=3 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     ->  Seq Scan on currencies cur (actual time=0.001..0.002 rows=3 loops=1)
+ Planning Time: 0.674 ms
+ Execution Time: 3.621 ms
+(29 rows)
+
+--- Q6: online vs in-person sessions, last 14 days (selective on starts_at)
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=1.511..1.512 rows=2 loops=1)
+   Sort Key: (count(DISTINCT s.session_id)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   ->  GroupAggregate (actual time=1.363..1.500 rows=2 loops=1)
+         Group Key: s.mode
+         ->  Sort (actual time=1.300..1.349 rows=1427 loops=1)
+               Sort Key: s.mode, s.session_id
+               Sort Method: quicksort  Memory: 108kB
+               ->  Nested Loop Left Join (actual time=0.031..0.573 rows=1427 loops=1)
+                     ->  Bitmap Heap Scan on sessions s (actual time=0.027..0.057 rows=236 loops=1)
+                           Recheck Cond: ((starts_at >= (CURRENT_DATE - '14 days'::interval)) AND (starts_at < now()))
+                           Heap Blocks: exact=14
+                           ->  Bitmap Index Scan on idx_sessions_startsat (actual time=0.023..0.023 rows=236 loops=1)
+                                 Index Cond: ((starts_at >= (CURRENT_DATE - '14 days'::interval)) AND (starts_at < now()))
+                     ->  Index Scan using idx_attendance_session on attendance a (actual time=0.001..0.002 rows=6 loops=236)
+                           Index Cond: (session_id = s.session_id)
+ Planning Time: 0.214 ms
+ Execution Time: 1.536 ms
+(18 rows)
+
+--- Q7: top-grossing courses, last 90 days (selective on paid_at)
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=11.166..11.173 rows=10 loops=1)
+   ->  Sort (actual time=11.165..11.171 rows=10 loops=1)
+         Sort Key: (round(sum((p.amount * cur.usd_rate)), 2)) DESC
+         Sort Method: quicksort  Memory: 26kB
+         ->  HashAggregate (actual time=11.150..11.159 rows=10 loops=1)
+               Group Key: co.course_id
+               Batches: 1  Memory Usage: 24kB
+               ->  Hash Join (actual time=1.964..9.444 rows=6992 loops=1)
+                     Hash Cond: (p.currency_code = cur.currency_code)
+                     ->  Hash Join (actual time=1.953..8.433 rows=6992 loops=1)
+                           Hash Cond: (i.course_id = co.course_id)
+                           ->  Hash Join (actual time=1.946..7.621 rows=6992 loops=1)
+                                 Hash Cond: (i.invoice_id = p.invoice_id)
+                                 ->  Seq Scan on invoices i (actual time=0.002..2.133 rows=35027 loops=1)
+                                 ->  Hash (actual time=1.933..1.934 rows=6992 loops=1)
+                                       Buckets: 8192  Batches: 1  Memory Usage: 420kB
+                                       ->  Bitmap Heap Scan on payments p (actual time=0.192..1.266 rows=6992 loops=1)
+                                             Recheck Cond: (paid_at >= (CURRENT_DATE - '90 days'::interval))
+                                             Heap Blocks: exact=251
+                                             ->  Bitmap Index Scan on idx_payments_paidat (actual time=0.166..0.166 rows=6992 loops=1)
+                                                   Index Cond: (paid_at >= (CURRENT_DATE - '90 days'::interval))
+                           ->  Hash (actual time=0.005..0.006 rows=10 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                 ->  Seq Scan on courses co (actual time=0.002..0.003 rows=10 loops=1)
+                     ->  Hash (actual time=0.005..0.006 rows=3 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           ->  Seq Scan on currencies cur (actual time=0.002..0.003 rows=3 loops=1)
+ Planning Time: 0.415 ms
+ Execution Time: 11.217 ms
+(29 rows)
+

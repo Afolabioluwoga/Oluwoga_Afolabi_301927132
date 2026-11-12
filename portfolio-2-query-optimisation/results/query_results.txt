@@ -1,0 +1,85 @@
+Pager usage is off.
+--- Q1: revenue per currency, last 30 days (selective on paid_at)
+ currency_code | total_amount | total_usd_equivalent | payment_count 
+---------------+--------------+----------------------+---------------
+ CAD           |     63530.00 |             46376.90 |           727
+ USD           |     39243.00 |             39243.00 |           586
+ NGN           |  36941000.00 |             24750.47 |          1594
+(3 rows)
+
+--- Q2: attendance per course, full history (full aggregate, kept on purpose)
+            course_name             | sessions_held | attendances_recorded | pct_present 
+------------------------------------+---------------+----------------------+-------------
+ Chess Basics for Beginners         |          1126 |                 6567 |       85.59
+ Positional Play & Strategy         |          1126 |                 6542 |       85.13
+ Opening Repertoire for White       |          1126 |                 6523 |       85.04
+ Sicilian Defense Deep Dive         |          1125 |                 6538 |       84.98
+ Scholastic Chess (Partner Schools) |          1126 |                 6486 |       84.91
+ Blitz & Bullet Speed Training      |          1126 |                 6516 |       84.91
+ Kids Chess Club (U-12)             |          1125 |                 6493 |       84.71
+ Tactics Bootcamp                   |          1126 |                 6569 |       84.35
+ Endgame Mastery                    |          1125 |                 6532 |       84.31
+ Tournament Preparation Camp        |          1125 |                 6527 |       83.67
+(10 rows)
+
+--- Q3: distinct students taught by coach 3, last 90 days (selective)
+ sessions_taught | distinct_students | total_attendances 
+-----------------+-------------------+-------------------
+             239 |               889 |              1403
+(1 row)
+
+--- Q4: 20 oldest overdue NGN invoices (selective)
+ invoice_id |  student_name  | billing_month | amount_due |  due_date  | days_overdue 
+------------+----------------+---------------+------------+------------+--------------
+       2495 | Ngozi Okoro    | 2024-12-01    |   18000.00 | 2024-12-11 |          701
+      13220 | Eze Nnamdi     | 2024-12-01    |   25500.00 | 2024-12-11 |          701
+      18039 | Mide Mbadinuju | 2024-12-01    |   30000.00 | 2024-12-11 |          701
+       7391 | Bola Bashir    | 2024-12-01    |   21000.00 | 2024-12-11 |          701
+      10029 | Lola Adebowale | 2024-12-01    |   24000.00 | 2024-12-11 |          701
+       1451 | Adaeze Balogun | 2024-12-01    |   16500.00 | 2024-12-11 |          701
+      14166 | Bisi Olawale   | 2024-12-01    |   27000.00 | 2024-12-11 |          701
+      16084 | Uche Ayodele   | 2024-12-01    |   28500.00 | 2024-12-11 |          701
+       9549 | Uche Ayodele   | 2024-12-01    |   22500.00 | 2024-12-11 |          701
+       2565 | Tunde Okafor   | 2024-12-01    |   18000.00 | 2024-12-11 |          701
+      11500 | Mide Mbadinuju | 2025-01-01    |   24000.00 | 2025-01-11 |          670
+       5119 | Dotun Sanusi   | 2025-01-01    |   19500.00 | 2025-01-11 |          670
+       2967 | Bisi Olawale   | 2025-01-01    |   18000.00 | 2025-01-11 |          670
+       4499 | Adaeze Balogun | 2025-01-01    |   19500.00 | 2025-01-11 |          670
+      10438 | Lola Adebowale | 2025-01-01    |   24000.00 | 2025-01-11 |          670
+      12259 | Aisha Adesanya | 2025-01-01    |   25500.00 | 2025-01-11 |          670
+       2045 | Dotun Sanusi   | 2025-01-01    |   18000.00 | 2025-01-11 |          670
+       3868 | Bisi Olawale   | 2025-01-01    |   18000.00 | 2025-01-11 |          670
+       7390 | Bola Bashir    | 2025-01-01    |   21000.00 | 2025-01-11 |          670
+        194 | Chidi Bello    | 2025-01-01    |   16500.00 | 2025-01-11 |          670
+(20 rows)
+
+--- Q5: marketing funnel - leads to converted students to payments (full aggregate, small tables)
+ platform  | total_leads | converted_leads | revenue_usd_equiv 
+-----------+-------------+-----------------+-------------------
+ tiktok    |         657 |             621 |          20956.42
+ youtube   |         361 |             352 |          14962.59
+ instagram |         464 |             437 |          13787.90
+(3 rows)
+
+--- Q6: online vs in-person sessions, last 14 days (selective on starts_at)
+   mode    | sessions_held | total_attendances 
+-----------+---------------+-------------------
+ online    |           164 |              1002
+ in-person |            72 |               425
+(2 rows)
+
+--- Q7: top-grossing courses, last 90 days (selective on paid_at)
+            course_name             | payments_received | gross_usd_equivalent 
+------------------------------------+-------------------+----------------------
+ Tournament Preparation Camp        |               785 |             32437.87
+ Scholastic Chess (Partner Schools) |               626 |             32108.03
+ Positional Play & Strategy         |               709 |             32034.73
+ Sicilian Defense Deep Dive         |               640 |             27444.45
+ Kids Chess Club (U-12)             |               723 |             25522.58
+ Blitz & Bullet Speed Training      |               634 |             25177.70
+ Opening Repertoire for White       |               674 |             24008.22
+ Tactics Bootcamp                   |               791 |             23878.82
+ Endgame Mastery                    |               687 |             22062.52
+ Chess Basics for Beginners         |               723 |             20446.89
+(10 rows)
+
