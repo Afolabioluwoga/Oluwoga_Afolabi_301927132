@@ -1,0 +1,58 @@
+
+======================================================================
+PART 1 - THE BUG: check-then-insert with no lock (READ COMMITTED)
+======================================================================
+Session 11259: capacity 8, already booked 7. Two students try to book the LAST seat.
+Session A: booked OK (it was 7/8 before this booking) (not committed yet)
+Session B: booked OK (it was 7/8 before this booking) (not committed yet)
+After both commit: 9/8 booked. The capacity trigger could not stop it: under READ COMMITTED it cannot see the other session's uncommitted row.
+PASS  overbooked 9/8 (expected 9/8)
+
+======================================================================
+PART 2 - FIX 1: SELECT ... FOR UPDATE on the session row (book_session_safe)
+======================================================================
+Session 11260: capacity 8, booked 7.
+Session A: booked OK (it was 7/8 before this booking) (holds the row lock, not committed)
+Session B is waiting for the lock: True
+Session B result after A committed: class full (capacity=8, current=8)
+PASS  B waited, then was refused; final 8/8
+
+======================================================================
+PART 3 - FIX 2: SERIALIZABLE isolation + client retry
+======================================================================
+Session 11261: capacity 8, booked 7.
+Session A: booked OK (it was 7/8 before this booking)
+Session B: booked OK (it was 7/8 before this booking)
+Session A committed.
+Session B FAILED to commit: SQLSTATE 40001 - could not serialize access. Retrying B in a new transaction...
+Session B retry result: class full (capacity=8, current=8)
+PASS  second writer got 40001, retry refused; final 8/8
+
+======================================================================
+PART 4 - READ COMMITTED vs REPEATABLE READ (what a long transaction sees)
+======================================================================
+READ COMMITTED  : first read 3, same query after another session committed -> 4  (non-repeatable)
+REPEATABLE READ : first read 4, same query after another session committed -> 4; new transaction sees 5
+PASS  RC sees the change, RR keeps its snapshot
+
+======================================================================
+PART 5 - DEADLOCK: two sessions lock two rows in opposite order
+======================================================================
+Session 1 holds session 11263; session 2 holds session 11264. Now each asks for the other one.
+Session 1: DEADLOCK victim, SQLSTATE 40P01
+Session 2: got the second lock
+PASS  PostgreSQL aborted exactly one session (S1) and let the other finish
+
+FIX: always lock rows in the same order (lowest session_id first).
+Session 2 is waiting (no deadlock): True
+PASS  with a fixed lock order session 2 simply waited, then finished
+
+======================================================================
+SUMMARY
+======================================================================
+PASS 1 race bug - overbooked 9/8 (expected 9/8)
+PASS 2 FOR UPDATE - B waited, then was refused; final 8/8
+PASS 3 SERIALIZABLE - second writer got 40001, retry refused; final 8/8
+PASS 4 isolation - RC sees the change, RR keeps its snapshot
+PASS 5 deadlock - PostgreSQL aborted exactly one session (S1) and let the other finish
+PASS 5b ordered locks - with a fixed lock order session 2 simply waited, then finished
