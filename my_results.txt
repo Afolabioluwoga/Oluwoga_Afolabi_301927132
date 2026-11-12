@@ -1,0 +1,239 @@
+Afordchess results - collected 2026-11-12 11:50 UTC
+Repo: Afolabioluwoga/Oluwoga_Afolabi_301927132   Branch: main
+
+################ GIT LOG
+fa728ee 2026-11-12 P5: portfolio-5-distributed-cloud - run outputs
+5421447 2026-11-12 P4: portfolio-4-nosql - run outputs
+a9243cb 2026-11-12 P3: portfolio-3-transactions-concurrency - run outputs
+feeb5ec 2026-11-12 P2: portfolio-2-query-optimisation - run outputs
+2cdee6b 2026-11-12 P1: portfolio-1-database-design - run outputs
+852a881 2026-11-12 Setup: kit files, setup script
+55fc4ba 2026-11-12 Initial commit
+
+################ P1 - row counts and constraint tests
+==== Bulk data summary ====
+      table_name      |              count              
+----------------------+---------------------------------
+ attendance           | 65285
+ coaches              | 6
+ course_enrolments    | 2810
+ courses              | 10
+ invoices             | 35027
+ leads                | 134
+ payments             | 28334
+ payments by currency | 15322 NGN / 7484 CAD / 5528 USD
+ sessions             | 11255
+ social_posts         | 78
+ students             | 1512
+(11 rows)
+TEST 1 PASS: duplicate email rejected — duplicate key value violates unique constraint "students_email_key"
+TEST 2 PASS: wrong-currency payment rejected — insert or update on table "payments" violates foreign key constraint "fk_pay_invoice_currency"
+TEST 3 PASS: in-person session without school rejected — new row for relation "sessions" violates check constraint "chk_inperson_school"
+TEST 4 control: first 8 bookings succeeded
+TEST 4 PASS: capacity exceeded rejected - Session 11257 is full (capacity=8, already booked=8). Booking rejected.
+TEST 5 PASS: not-enrolled booking rejected — Student 1118 is not actively enrolled in course 1 (session 11258). Booking rejected.
+
+################ P2 - EXPLAIN ANALYZE summary
+P2 summary - EXPLAIN ANALYZE execution time (ms) and how each table was read
+
+Query  Before ms   After ms  Speed-up  Tables read AFTER (table:scan type)
+Q1          6.16       2.51      2.4x  payments:Bitmap currencies:Seq
+Q2         94.23      96.65      1.0x  attendance:Seq sessions:Seq courses:Seq
+Q3         16.43       1.43     11.5x  sessions:Bitmap attendance:Idx
+Q4          8.64       0.13     64.9x  invoices:Idx students:Idx
+Q5         11.44       3.62      3.2x  leads:Seq social_posts:Seq invoices:Idx payments:Idx currencies:Seq
+Q6         17.11       1.54     11.1x  sessions:Bitmap attendance:Idx
+Q7         31.93      11.22      2.8x  invoices:Seq payments:Bitmap courses:Seq currencies:Seq
+
+Before-plan scans:
+  Q1: payments:Seq currencies:Seq
+  Q2: attendance:Seq sessions:Seq courses:Seq
+  Q3: attendance:Seq sessions:Seq
+  Q4: invoices:Seq students:Seq
+  Q5: payments:Seq leads:Seq social_posts:Seq invoices:Idx currencies:Seq
+  Q6: attendance:Seq sessions:Seq
+  Q7: invoices:Seq payments:Seq courses:Seq currencies:Seq
+
+Note: Q2 and Q5 are full-history aggregates kept on purpose; a Seq Scan is the correct plan there.
+Small differences where the plan did not change are run-to-run noise.
+
+################ P3 - race, isolation, deadlock demos
+
+======================================================================
+PART 1 - THE BUG: check-then-insert with no lock (READ COMMITTED)
+======================================================================
+Session 11259: capacity 8, already booked 7. Two students try to book the LAST seat.
+Session A: booked OK (it was 7/8 before this booking) (not committed yet)
+Session B: booked OK (it was 7/8 before this booking) (not committed yet)
+After both commit: 9/8 booked. The capacity trigger could not stop it: under READ COMMITTED it cannot see the other session's uncommitted row.
+PASS  overbooked 9/8 (expected 9/8)
+
+======================================================================
+PART 2 - FIX 1: SELECT ... FOR UPDATE on the session row (book_session_safe)
+======================================================================
+Session 11260: capacity 8, booked 7.
+Session A: booked OK (it was 7/8 before this booking) (holds the row lock, not committed)
+Session B is waiting for the lock: True
+Session B result after A committed: class full (capacity=8, current=8)
+PASS  B waited, then was refused; final 8/8
+
+======================================================================
+PART 3 - FIX 2: SERIALIZABLE isolation + client retry
+======================================================================
+Session 11261: capacity 8, booked 7.
+Session A: booked OK (it was 7/8 before this booking)
+Session B: booked OK (it was 7/8 before this booking)
+Session A committed.
+Session B FAILED to commit: SQLSTATE 40001 - could not serialize access. Retrying B in a new transaction...
+Session B retry result: class full (capacity=8, current=8)
+PASS  second writer got 40001, retry refused; final 8/8
+
+======================================================================
+PART 4 - READ COMMITTED vs REPEATABLE READ (what a long transaction sees)
+======================================================================
+READ COMMITTED  : first read 3, same query after another session committed -> 4  (non-repeatable)
+REPEATABLE READ : first read 4, same query after another session committed -> 4; new transaction sees 5
+PASS  RC sees the change, RR keeps its snapshot
+
+======================================================================
+PART 5 - DEADLOCK: two sessions lock two rows in opposite order
+======================================================================
+Session 1 holds session 11263; session 2 holds session 11264. Now each asks for the other one.
+Session 1: DEADLOCK victim, SQLSTATE 40P01
+Session 2: got the second lock
+PASS  PostgreSQL aborted exactly one session (S1) and let the other finish
+
+FIX: always lock rows in the same order (lowest session_id first).
+Session 2 is waiting (no deadlock): True
+PASS  with a fixed lock order session 2 simply waited, then finished
+
+======================================================================
+SUMMARY
+======================================================================
+PASS 1 race bug - overbooked 9/8 (expected 9/8)
+PASS 2 FOR UPDATE - B waited, then was refused; final 8/8
+PASS 3 SERIALIZABLE - second writer got 40001, retry refused; final 8/8
+PASS 4 isolation - RC sees the change, RR keeps its snapshot
+PASS 5 deadlock - PostgreSQL aborted exactly one session (S1) and let the other finish
+PASS 5b ordered locks - with a fixed lock order session 2 simply waited, then finished
+
+################ P4 - validation, counts, COLLSCAN to IXSCAN
+PASS - post with platform "facebook" rejected: Document failed validation
+PASS - post missing caption rejected: Document failed validation
+social_posts : 3000
+daily_metrics: 30000
+comments     : 7461
+conversions  : 3000
+TOTAL        : 43461
+  (no old idx_post_date to drop)
+daily_metrics documents: 30000
+
+===== BEFORE index (expected COLLSCAN) =====
+  Stage      : COLLSCAN
+  Docs       : 30000 examined, 10 returned, 0 keys
+  Time ms    : 10
+
+  Created index idx_post_date on { post_id: 1, date: 1 }
+
+===== AFTER index (expected IXSCAN) =====
+  Stage      : IXSCAN (idx_post_date)
+  Docs       : 10 examined, 10 returned, 10 keys
+  Time ms    : 1
+
+################ P5 - partitions and replica
+===== payments partition tree =====
+    partition     | isleaf |                             partition_bound                              
+------------------+--------+--------------------------------------------------------------------------
+ payments_default | t      | DEFAULT
+ payments_202701  | t      | FOR VALUES FROM ('2027-01-01 00:00:00+01') TO ('2027-02-01 00:00:00+01')
+ payments_202612  | t      | FOR VALUES FROM ('2026-12-01 00:00:00+01') TO ('2027-01-01 00:00:00+01')
+ payments_202611  | t      | FOR VALUES FROM ('2026-11-01 00:00:00+01') TO ('2026-12-01 00:00:00+01')
+ payments_202610  | t      | FOR VALUES FROM ('2026-10-01 00:00:00+01') TO ('2026-11-01 00:00:00+01')
+ payments_202609  | t      | FOR VALUES FROM ('2026-09-01 00:00:00+01') TO ('2026-10-01 00:00:00+01')
+ payments_202608  | t      | FOR VALUES FROM ('2026-08-01 00:00:00+01') TO ('2026-09-01 00:00:00+01')
+ payments_202607  | t      | FOR VALUES FROM ('2026-07-01 00:00:00+01') TO ('2026-08-01 00:00:00+01')
+(8 rows)
+===== EXPLAIN — partition pruning on payments (last 3 months) =====
+                                                                                                          QUERY PLAN                                                                                                           
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         Subplans Removed: 25
+         ->  Bitmap Heap Scan on payments_202608 payments_1
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202608_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+         ->  Bitmap Heap Scan on payments_202609 payments_2
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202609_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+         ->  Bitmap Heap Scan on payments_202610 payments_3
+               Recheck Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+               ->  Bitmap Index Scan on payments_202610_paid_at_idx
+                     Index Cond: ((paid_at >= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone) - '3 mons'::interval)) AND (paid_at < date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+(15 rows)
+ANALYZE
+===== Row count per monthly partition (newest 6) + DEFAULT partition =====
+    partition    | rows 
+-----------------+------
+ payments_202611 | 2252
+ payments_202610 | 2206
+ payments_202609 | 2107
+ payments_202608 | 2018
+ payments_202607 | 1934
+ payments_202606 | 1806
+(6 rows)
+          check_name          | rows 
+------------------------------+------
+ payments_default (must be 0) |    0
+(1 row)
+            check_name            | rows  
+----------------------------------+-------
+ total in partitioned table       | 28334
+ total in old unpartitioned table | 28334
+===== One-month query on the PARTITIONED table =====
+ Execution Time: 0.800 ms
+===== Same query on the UNPARTITIONED table =====
+   ->  Bitmap Heap Scan on payments_unpartitioned (actual time=0.086..0.585 rows=2018 loops=1)
+ Execution Time: 1.014 ms
+
+================ Replica demo: primary (5432) + streaming replica (5433) ================
+
+### 1. Who is who
+PRIMARY port 5432  in_recovery=false
+REPLICA port 5433  in_recovery=true
+
+### 2. Write on the REPLICA must be rejected
+ERROR:  cannot execute INSERT in a read-only transaction
+-> rejected as expected (replica is read-only)
+
+### 3. Insert on the PRIMARY
+ student_id |          email           
+------------+--------------------------
+       1514 | demo.replica@example.com
+(1 row)
+
+INSERT 0 1
+
+### 4. Read the same row on the REPLICA
+ student_id | first_name  | last_name |          email           
+------------+-------------+-----------+--------------------------
+       1514 | DemoReplica | Streaming | demo.replica@example.com
+(1 row)
+
+
+### 5. Replication state, seen from the PRIMARY
+ application_name |   state   | sync_state | sent_lsn  | replay_lsn | lag_bytes 
+------------------+-----------+------------+-----------+------------+-----------
+ walreceiver      | streaming | async      | 0/8004218 | 0/8004218  |         0
+(1 row)
+
+
+### 6. Replay position, seen from the REPLICA
+ replayed_up_to | in_recovery 
+----------------+-------------
+ 0/8004218      | t
+(1 row)
+
+
+================ End of replica demo ================
