@@ -1,0 +1,149 @@
+==> [1/5] Create 14-table schema
+psql:schema.sql:15: NOTICE:  table "payments_unpartitioned" does not exist, skipping
+DROP TABLE
+psql:schema.sql:16: NOTICE:  table "leads" does not exist, skipping
+DROP TABLE
+psql:schema.sql:17: NOTICE:  table "social_posts" does not exist, skipping
+DROP TABLE
+psql:schema.sql:18: NOTICE:  table "payments" does not exist, skipping
+DROP TABLE
+psql:schema.sql:19: NOTICE:  table "invoices" does not exist, skipping
+DROP TABLE
+psql:schema.sql:20: NOTICE:  table "billing_plans" does not exist, skipping
+DROP TABLE
+psql:schema.sql:21: NOTICE:  table "attendance" does not exist, skipping
+DROP TABLE
+psql:schema.sql:22: NOTICE:  table "sessions" does not exist, skipping
+DROP TABLE
+psql:schema.sql:23: NOTICE:  table "course_enrolments" does not exist, skipping
+DROP TABLE
+psql:schema.sql:24: NOTICE:  table "courses" does not exist, skipping
+DROP TABLE
+psql:schema.sql:25: NOTICE:  table "students" does not exist, skipping
+DROP TABLE
+psql:schema.sql:26: NOTICE:  table "coaches" does not exist, skipping
+DROP TABLE
+psql:schema.sql:27: NOTICE:  table "schools" does not exist, skipping
+DROP TABLE
+psql:schema.sql:28: NOTICE:  table "currencies" does not exist, skipping
+DROP TABLE
+psql:schema.sql:29: NOTICE:  table "countries" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+==> [2/5] Create triggers (capacity + enrolment)
+psql:triggers.sql:10: NOTICE:  function fn_check_session_capacity() does not exist, skipping
+DROP FUNCTION
+CREATE FUNCTION
+psql:triggers.sql:38: NOTICE:  trigger "trg_check_capacity" for relation "attendance" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+psql:triggers.sql:46: NOTICE:  function fn_check_enrolment() does not exist, skipping
+DROP FUNCTION
+CREATE FUNCTION
+psql:triggers.sql:78: NOTICE:  trigger "trg_check_enrolment" for relation "attendance" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+==> [3/5] Seed reference data
+BEGIN
+INSERT 0 3
+INSERT 0 3
+INSERT 0 4
+INSERT 0 6
+INSERT 0 12
+INSERT 0 10
+INSERT 0 24
+INSERT 0 80
+INSERT 0 30
+INSERT 0 144
+INSERT 0 78
+INSERT 0 12
+COMMIT
+==> [4/5] Generate bulk data (60k+ attendance rows, ~15k payments)
+BEGIN
+ALTER TABLE
+ALTER TABLE
+INSERT 0 1500
+INSERT 0 2786
+INSERT 0 11175
+INSERT 0 65285
+INSERT 0 34883
+UPDATE 4211
+INSERT 0 28334
+UPDATE 0
+INSERT 0 122
+ALTER TABLE
+ALTER TABLE
+COMMIT
+==== Bulk data summary ====
+      table_name      |              count              
+----------------------+---------------------------------
+ attendance           | 65285
+ coaches              | 6
+ course_enrolments    | 2810
+ courses              | 10
+ invoices             | 35027
+ leads                | 134
+ payments             | 28334
+ payments by currency | 15322 NGN / 7484 CAD / 5528 USD
+ sessions             | 11255
+ social_posts         | 78
+ students             | 1512
+(11 rows)
+
+==> [5/5] Run constraint tests (5 expected PASS)
+================================================================
+ Constraint tests — each block is expected to raise an error.
+================================================================
+
+[TEST 1] Duplicate student email — should FAIL with unique_violation
+psql:constraint_tests.sql:33: NOTICE:  TEST 1 PASS: duplicate email rejected — duplicate key value violates unique constraint "students_email_key"
+DO
+
+[TEST 2] Payment in wrong currency — should FAIL with foreign_key_violation
+psql:constraint_tests.sql:60: NOTICE:  TEST 2 PASS: wrong-currency payment rejected — insert or update on table "payments" violates foreign key constraint "fk_pay_invoice_currency"
+DO
+
+[TEST 3] In-person session with no school — should FAIL with check_violation
+psql:constraint_tests.sql:78: NOTICE:  TEST 3 PASS: in-person session without school rejected — new row for relation "sessions" violates check constraint "chk_inperson_school"
+DO
+
+[TEST 4] Session capacity exceeded — should FAIL (trigger exception)
+psql:constraint_tests.sql:125: NOTICE:  TEST 4 control: first 8 bookings succeeded
+psql:constraint_tests.sql:125: NOTICE:  TEST 4 PASS: capacity exceeded rejected - Session 11257 is full (capacity=8, already booked=8). Booking rejected.
+DO
+
+[TEST 5] Student not enrolled in course — should FAIL (trigger exception)
+psql:constraint_tests.sql:163: NOTICE:  TEST 5 PASS: not-enrolled booking rejected — Student 1118 is not actively enrolled in course 1 (session 11258). Booking rejected.
+DO
+
+================================================================
+ End of constraint tests — all 5 should report PASS above.
+================================================================
+
+==> P1 done. Take the screenshots listed in README.md and commit:
+    git add portfolio-1-database-design/ && git commit -m 'P1: schema, ER, triggers, bulk data, constraint tests'
